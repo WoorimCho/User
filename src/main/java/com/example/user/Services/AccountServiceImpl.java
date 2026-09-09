@@ -28,10 +28,13 @@ public class AccountServiceImpl implements AccountService {
 
     private final AccountRepository accounts;
     private final PasswordEncoder passwordEncoder;
+    /** A real hash to verify against when the account doesn't exist, so auth timing doesn't leak whether it does. */
+    private final String dummyHash;
 
     public AccountServiceImpl(AccountRepository accounts, PasswordEncoder passwordEncoder) {
         this.accounts = accounts;
         this.passwordEncoder = passwordEncoder;
+        this.dummyHash = passwordEncoder.encode("timing-equalizer-not-a-real-password");
     }
 
     @Override
@@ -89,8 +92,12 @@ public class AccountServiceImpl implements AccountService {
         String identifier = request.identifier().trim();
         Account account = accounts.findByUsernameIgnoreCase(identifier)
                 .or(() -> accounts.findByEmailIgnoreCase(identifier))
-                .orElseThrow(InvalidCredentialsException::new);
-        if (!passwordEncoder.matches(request.password(), account.getPasswordHash())) {
+                .orElse(null);
+        // Always run one BCrypt check — against the real hash, or a dummy — so a
+        // wrong password and an unknown user take the same time (no enumeration).
+        String hash = account != null ? account.getPasswordHash() : dummyHash;
+        boolean ok = passwordEncoder.matches(request.password(), hash);
+        if (account == null || !ok) {
             throw new InvalidCredentialsException();
         }
         return AuthenticateResponse.from(account);
