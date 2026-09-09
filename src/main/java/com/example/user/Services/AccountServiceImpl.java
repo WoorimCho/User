@@ -37,11 +37,11 @@ public class AccountServiceImpl implements AccountService {
     @Override
     public AccountResponse register(RegisterRequest request) {
         String username = request.username().trim();
-        String email = request.email().trim();
+        String email = normaliseEmail(request.email());
         if (accounts.existsByUsernameIgnoreCase(username)) {
             throw new IllegalArgumentException("username already taken");
         }
-        if (accounts.existsByEmailIgnoreCase(email)) {
+        if (email != null && accounts.existsByEmailIgnoreCase(email)) {
             throw new IllegalArgumentException("email already registered");
         }
         Account account = new Account(username, email, request.displayName().trim(),
@@ -58,8 +58,9 @@ public class AccountServiceImpl implements AccountService {
     @Override
     public AccountResponse updateProfile(long id, ProfileUpdateRequest request) {
         Account account = require(id);
-        String email = request.email().trim();
-        if (!email.equalsIgnoreCase(account.getEmail()) && accounts.existsByEmailIgnoreCase(email)) {
+        String email = normaliseEmail(request.email());
+        if (email != null && !email.equalsIgnoreCase(account.getEmail())
+                && accounts.existsByEmailIgnoreCase(email)) {
             throw new IllegalArgumentException("email already registered");
         }
         account.setEmail(email);
@@ -165,5 +166,14 @@ public class AccountServiceImpl implements AccountService {
 
     private Account require(long id) {
         return accounts.findById(id).orElseThrow(() -> NotFoundException.of("Account", id));
+    }
+
+    /** Blank email -> null: it's optional, and the unique index treats every NULL as distinct. */
+    private static String normaliseEmail(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

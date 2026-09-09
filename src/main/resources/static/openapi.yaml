@@ -285,10 +285,10 @@ components:
   schemas:
     RegisterRequest:
       type: object
-      required: [username, email, displayName, password]
+      required: [username, displayName, password]
       properties:
         username: { type: string, minLength: 3, maxLength: 50 }
-        email: { type: string, format: email, maxLength: 255 }
+        email: { type: string, format: email, maxLength: 255, nullable: true, description: Optional; omit or blank for none. }
         displayName: { type: string, maxLength: 100 }
         password: { type: string, minLength: 8, maxLength: 100, writeOnly: true }
     AccountResponse:
@@ -296,7 +296,7 @@ components:
       properties:
         id: { type: integer, format: int64 }
         username: { type: string }
-        email: { type: string }
+        email: { type: string, nullable: true }
         displayName: { type: string }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -304,9 +304,9 @@ components:
         favoriteRecipeIds: { type: array, items: { type: integer, format: int64 } }
     ProfileUpdateRequest:
       type: object
-      required: [email, displayName]
+      required: [displayName]
       properties:
-        email: { type: string, format: email, maxLength: 255 }
+        email: { type: string, format: email, maxLength: 255, nullable: true, description: Optional; blank clears it. }
         displayName: { type: string, maxLength: 100 }
     PasswordChangeRequest:
       type: object

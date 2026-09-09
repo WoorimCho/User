@@ -73,6 +73,15 @@ class OpenApiContractTest {
     }
 
     @Test
+    void registerWithoutEmail_matchesContract() throws Exception {
+        mvc.perform(post("/api/accounts").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"noemail","displayName":"No Email","password":"s3cret-pw"}"""))
+                .andExpect(status().isCreated())
+                .andExpect(openApi().isValid(validator));
+    }
+
+    @Test
     void duplicateRegister_matchesContractAs400Problem() throws Exception {
         // A contract-valid body that the server rejects on a business rule (the
         // username is taken) — so request validation passes and we're checking

@@ -11,9 +11,10 @@ per-recipe ingredient substitutions).
 
 ## Model
 
-- **`Account`** — `id`, `username` (unique), `email` (unique), `displayName`,
-  BCrypt `passwordHash`, `Set<String> restrictions` (free-text codes),
-  `List<Long> favoriteRecipeIds`, timestamps.
+- **`Account`** — `id`, `username` (unique), `email` (**optional**, unique when
+  set — nothing is sent to it), `displayName`, BCrypt `passwordHash`,
+  `Set<String> restrictions` (free-text codes), `List<Long> favoriteRecipeIds`,
+  timestamps.
 - **`FavoriteAlternative`** — per `(accountId, recipeId, ingredientId)`, a
   preferred `replacementIngredientId`.
 - **`Restriction`** — the seeded advisory catalogue (`code`, `label`, `kind`,
@@ -25,9 +26,9 @@ per-recipe ingredient substitutions).
 ### `/api/accounts`
 | | |
 |---|---|
-| `POST /` | register (`username`, `email`, `displayName`, `password`) → `AccountResponse` |
+| `POST /` | register (`username`, `password`, `displayName`; `email` optional) → `AccountResponse` |
 | `GET /{id}` | one account |
-| `PUT /{id}` | update `email` / `displayName` |
+| `PUT /{id}` | update `displayName` (and `email`; blank clears it) |
 | `PUT /{id}/password` | `{currentPassword, newPassword}` — current is verified (401 if wrong) |
 | `GET\|PUT /{id}/restrictions` | read / replace the code set |
 | `GET /{id}/favorites/recipes`, `POST\|DELETE /{id}/favorites/recipes/{recipeId}` | favourite recipes |

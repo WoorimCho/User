@@ -46,8 +46,9 @@ public class Account {
     @Column(name = "username", nullable = false, length = 50)
     private String username;
 
+    /** Optional — nothing is ever sent to it. Unique when present (MySQL lets NULLs repeat). */
     @Setter
-    @Column(name = "email", nullable = false, length = 255)
+    @Column(name = "email", length = 255)
     private String email;
 
     @Setter

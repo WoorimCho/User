@@ -52,6 +52,24 @@ class AccountFlowIntegrationTest {
     }
 
     @Test
+    void emailIsOptional() throws Exception {
+        // no email field at all
+        String created = mvc.perform(post("/api/accounts").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"noemail\",\"displayName\":\"No Email\",\"password\":\"s3cret-pw\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(created).contains("\"email\":null");
+
+        // login by username still works; there's no email to log in with
+        mvc.perform(auth("noemail", "s3cret-pw")).andExpect(status().isOk());
+
+        // a second account with no email doesn't collide on uk_account_email
+        mvc.perform(post("/api/accounts").contentType(MediaType.APPLICATION_JSON)
+                        .content(body("noemail2", "", "No Email 2", "s3cret-pw")))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
     void duplicateUsernameIsRejected() throws Exception {
         register("dup", "a@example.com", "A", "password1");
         mvc.perform(post("/api/accounts").contentType(MediaType.APPLICATION_JSON).content(
