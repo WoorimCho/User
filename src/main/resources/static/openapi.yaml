@@ -1,0 +1,378 @@
+openapi: 3.0.3
+info:
+  title: User Service API
+  description: >
+    Accounts (profile + credentials), per-account dietary restrictions,
+    favourite recipes (a variation is its own recipe id) and favourite
+    substitutions, plus an advisory catalogue of common restrictions.
+    recipe_id / ingredient_id values reference RecipeCatalogue / IngredientCatalogue
+    by value — no foreign keys across the boundary.
+
+    Security: every endpoint is currently permitAll (the service trusts its
+    network). Passwords are stored as BCrypt hashes. Who may read/modify account
+    N is the still-open inter-service auth decision. Hand-maintained contract;
+    keep it in step with the controllers under `com.example.user.Controllers`.
+  version: 0.0.1
+servers:
+  - url: http://localhost:8084
+    description: Local
+
+tags:
+  - name: accounts
+  - name: auth
+  - name: restrictions
+
+paths:
+  /api/accounts:
+    post:
+      tags: [accounts]
+      summary: Register an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountResponse' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /api/accounts/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    get:
+      tags: [accounts]
+      summary: Get an account (no password hash)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountResponse' }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [accounts]
+      summary: Update the editable profile fields (email, display name)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfileUpdateRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountResponse' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [accounts]
+      summary: Delete an account
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/accounts/{id}/password:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    put:
+      tags: [accounts]
+      summary: Change the password (requires the current one)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordChangeRequest' }
+      responses:
+        '204': { description: Changed }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/accounts/{id}/restrictions:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    get:
+      tags: [accounts]
+      summary: The account's restriction codes
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { type: string } }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [accounts]
+      summary: Replace the account's restriction codes (free text; empty clears)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestrictionsRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountResponse' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/accounts/{id}/favorites/recipes:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    get:
+      tags: [accounts]
+      summary: The account's favourite recipe ids
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { type: integer, format: int64 } }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/accounts/{id}/favorites/recipes/{recipeId}:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+      - name: recipeId
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [accounts]
+      summary: Favourite a recipe (idempotent)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountResponse' }
+        '404': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [accounts]
+      summary: Unfavourite a recipe (idempotent)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountResponse' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/accounts/{id}/favorites/alternatives:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    get:
+      tags: [accounts]
+      summary: The account's favourite substitutions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/FavoriteAlternativeResponse' }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [accounts]
+      summary: Replace the whole set of favourite substitutions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FavoriteAlternativesRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/FavoriteAlternativeResponse' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/accounts/{id}/favorites/alternatives/{alternativeId}:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+      - name: alternativeId
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    delete:
+      tags: [accounts]
+      summary: Remove one favourite substitution
+      responses:
+        '204': { description: Removed }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/authenticate:
+    post:
+      tags: [auth]
+      summary: Verify a username-or-email + password
+      description: Returns the identity a caller needs to establish its own session. Does not issue a token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthenticateRequest' }
+      responses:
+        '200':
+          description: Credentials valid
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthenticateResponse' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+
+  /api/restrictions:
+    get:
+      tags: [restrictions]
+      summary: The advisory catalogue, optionally filtered by kind
+      parameters:
+        - name: kind
+          in: query
+          schema: { type: string, enum: [diet, allergen, religious, lifestyle] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RestrictionResponse' }
+
+  /api/restrictions/{code}:
+    get:
+      tags: [restrictions]
+      summary: One catalogue entry by code
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+          example: diet:vegan
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RestrictionResponse' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+
+  responses:
+    Problem:
+      description: RFC 9457 problem detail
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [username, email, displayName, password]
+      properties:
+        username: { type: string, minLength: 3, maxLength: 50 }
+        email: { type: string, format: email, maxLength: 255 }
+        displayName: { type: string, maxLength: 100 }
+        password: { type: string, minLength: 8, maxLength: 100, writeOnly: true }
+    AccountResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        username: { type: string }
+        email: { type: string }
+        displayName: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        restrictions: { type: array, items: { type: string } }
+        favoriteRecipeIds: { type: array, items: { type: integer, format: int64 } }
+    ProfileUpdateRequest:
+      type: object
+      required: [email, displayName]
+      properties:
+        email: { type: string, format: email, maxLength: 255 }
+        displayName: { type: string, maxLength: 100 }
+    PasswordChangeRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string, writeOnly: true }
+        newPassword: { type: string, minLength: 8, maxLength: 100, writeOnly: true }
+    AuthenticateRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier: { type: string, description: Username or email. }
+        password: { type: string, writeOnly: true }
+    AuthenticateResponse:
+      type: object
+      properties:
+        accountId: { type: integer, format: int64 }
+        username: { type: string }
+        displayName: { type: string }
+    RestrictionsRequest:
+      type: object
+      properties:
+        restrictions:
+          type: array
+          items: { type: string }
+          description: Codes; normalised to trimmed lower-case. Null or empty clears.
+    RestrictionResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        code: { type: string }
+        label: { type: string }
+        kind: { type: string }
+        description: { type: string, nullable: true }
+    FavoriteAlternativeRequest:
+      type: object
+      required: [recipeId, ingredientId, replacementIngredientId]
+      properties:
+        recipeId: { type: integer, format: int64 }
+        ingredientId: { type: integer, format: int64, description: The line ingredient being replaced. }
+        replacementIngredientId: { type: integer, format: int64, description: The preferred substitute. }
+    FavoriteAlternativesRequest:
+      type: object
+      properties:
+        alternatives:
+          type: array
+          items: { $ref: '#/components/schemas/FavoriteAlternativeRequest' }
+    # FavoriteAlternativeRequest + the server-assigned id. Flattened (not `allOf`)
+    # so strict validators don't treat each branch as a closed object.
+    FavoriteAlternativeResponse:
+      type: object
+      required: [recipeId, ingredientId, replacementIngredientId]
+      properties:
+        id: { type: integer, format: int64 }
+        recipeId: { type: integer, format: int64 }
+        ingredientId: { type: integer, format: int64, description: The line ingredient being replaced. }
+        replacementIngredientId: { type: integer, format: int64, description: The preferred substitute. }
+    ProblemDetail:
+      type: object
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string, format: uri }
+        errors:
+          type: object
+          additionalProperties: { type: string }
+          description: Present on 400 validation failures — field name to message.
