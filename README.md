@@ -59,7 +59,8 @@ docker compose up -d mysql       # local — schema `user_service`
 | `SERVER_PORT` | `8084` |
 | `ZIPKIN_ENDPOINT` | `http://localhost:9411/api/v2/spans` |
 
-Flyway migrations; `ddl-auto=validate`.
+Flyway migrations: `V1` schema, `V2` seed restrictions, `V3` make `email`
+nullable. `ddl-auto=validate`.
 
 ## Tests
 
