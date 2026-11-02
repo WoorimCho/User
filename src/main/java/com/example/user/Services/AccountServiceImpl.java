@@ -5,6 +5,7 @@ import com.example.user.Dto.AuthenticateRequest;
 import com.example.user.Dto.AuthenticateResponse;
 import com.example.user.Dto.FavoriteAlternativeRequest;
 import com.example.user.Dto.FavoriteAlternativeResponse;
+import com.example.user.Dto.Limits;
 import com.example.user.Dto.PasswordChangeRequest;
 import com.example.user.Dto.ProfileUpdateRequest;
 import com.example.user.Dto.RegisterRequest;
@@ -123,7 +124,12 @@ public class AccountServiceImpl implements AccountService {
     @Override
     public AccountResponse addFavoriteRecipe(long id, long recipeId) {
         Account account = require(id);
-        account.getFavoriteRecipeIds().add(recipeId);
+        Set<Long> favourites = account.getFavoriteRecipeIds();
+        if (favourites.size() >= Limits.FAVORITE_RECIPES && !favourites.contains(recipeId)) {
+            throw new IllegalArgumentException(
+                    "an account can have at most " + Limits.FAVORITE_RECIPES + " favourite recipes");
+        }
+        favourites.add(recipeId);
         return AccountResponse.from(accounts.save(account));
     }
 

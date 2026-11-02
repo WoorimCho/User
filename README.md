@@ -44,18 +44,26 @@ per-recipe ingredient substitutions).
 ## Run
 
 ```bash
-cd .. && docker compose up --build user
+# once: database passwords live in a git-ignored .env, never in the repo
+cp .env.example .env             # then fill in MYSQL_ROOT_PASSWORD and MYSQL_PASSWORD (openssl rand -hex 24)
+
+cd .. && docker compose up --build user    # root stack: reads ../.env
 
 docker compose up -d mysql       # local — schema `user_service`
-./gradlew bootRun
+./gradlew bootRun                # Spring Boot's docker-compose support reads .env
 ```
+
+`compose.yaml` refuses to start while a password is unset or empty (finding H4).
+If a container from before this change still exists, its old password survives
+the new `.env` — `docker compose down -v` first (this wipes that dev database).
 
 ## Configuration (env)
 
 | Var | Default |
 |---|---|
 | `SPRING_DATASOURCE_URL` | `jdbc:mysql://localhost:3309/user_service` |
-| `SPRING_DATASOURCE_USERNAME` / `_PASSWORD` | `myuser` / `secret` |
+| `SPRING_DATASOURCE_USERNAME` | `myuser` |
+| `SPRING_DATASOURCE_PASSWORD` | **none** — set from `MYSQL_PASSWORD` (`.env`); the app fails to connect without it |
 | `SERVER_PORT` | `8084` |
 | `ZIPKIN_ENDPOINT` | `http://localhost:9411/api/v2/spans` |
 
@@ -71,16 +79,23 @@ nullable. `ddl-auto=validate`.
 
 ## Security ⚠️
 
-`SecurityConfig` is `anyRequest().permitAll()` — **the security starter is on
-the classpath only to force BCrypt**, not to gate anything. Passwords are
-BCrypt and `currentPassword` is verified on change, **but every other endpoint
-is unauthenticated**: anyone who can reach `:8084` can read any account's PII,
-change its email/display name, overwrite its restrictions, or delete it. IDs are
-sequential.
+`SecurityConfig` is `anyRequest().permitAll()` at the Spring Security layer — the
+starter is there for BCrypt. Access control is `UserInternalAuthFilter` (finding
+C1, fixed 2026-09-09): **every `/api/**` call needs a valid HMAC
+`X-Internal-Auth` header** from an internal caller, and for
+`/api/accounts/{id}` (and everything under it) the acting user in that header
+must equal `{id}` → 403 otherwise. Passwords are BCrypt, `currentPassword` is
+verified on change, and `authenticate` runs one BCrypt verify whether or not the
+account exists (finding M2, so timing doesn't reveal usernames).
 
-This is **finding C1** in `../IngredientCatalogue/SECURITY.md` and the top
-open item. Intended fix: the BFF forwards a verified identity and this service
-enforces `caller == {id}`. Until then, bind `:8084` to `127.0.0.1`.
+The shared secret (`INTERNAL_AUTH_SECRET`) still has a **public dev default**
+(finding N1): set a real one, and keep `:8084` bound to `127.0.0.1`.
+See `../IngredientCatalogue/SECURITY.md`.
+
+**Limits** (finding N4; `Dto/Limits`): ≤ 100 restrictions of ≤ 100 chars per
+account (the `PUT …/restrictions` body is now actually validated — it wasn't
+before), ≤ 200 favourite substitutions per call, ≤ 1 000 favourite recipes per
+account. Over a limit → 400.
 
 ## Status
 

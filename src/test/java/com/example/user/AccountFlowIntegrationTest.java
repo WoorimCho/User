@@ -1,5 +1,6 @@
 package com.example.user;
 
+import com.example.user.Dto.Limits;
 import com.example.user.Repositories.AccountRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,9 +11,12 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -33,6 +37,8 @@ class AccountFlowIntegrationTest {
     MockMvc mvc;
     @Autowired
     AccountRepository accounts;
+    @Autowired
+    TransactionTemplate tx;
 
     @BeforeEach
     void reset() {
@@ -136,6 +142,58 @@ class AccountFlowIntegrationTest {
         mvc.perform(delete("/api/accounts/" + id + "/favorites/alternatives/" + altId))
                 .andExpect(status().isNoContent());
         assertThat(getBody("/api/accounts/" + id + "/favorites/alternatives")).isEqualTo("[]");
+    }
+
+    // --- SECURITY.md N4: bounded request collections ------------------------------------------
+
+    private static String quotedCodes(int count) {
+        return IntStream.rangeClosed(1, count).mapToObj(i -> "\"r" + i + "\"").collect(Collectors.joining(","));
+    }
+
+    @Test
+    void restrictionsAreNowActuallyValidated() throws Exception {
+        // The PUT used to have no @Valid, so no constraint on the body was ever applied.
+        long id = firstId(register("limits", "limits@example.com", "Limits", "password1"));
+
+        mvc.perform(put("/api/accounts/" + id + "/restrictions").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"restrictions\":[" + quotedCodes(Limits.RESTRICTIONS) + "]}"))
+                .andExpect(status().isOk());
+        mvc.perform(put("/api/accounts/" + id + "/restrictions").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"restrictions\":[" + quotedCodes(Limits.RESTRICTIONS + 1) + "]}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(put("/api/accounts/" + id + "/restrictions").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"restrictions\":[\"" + "x".repeat(Limits.RESTRICTION_CODE_LENGTH + 1) + "\"]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void tooManyFavouriteSubstitutionsInOneCallIsRejected() throws Exception {
+        long id = firstId(register("altlimit", "alt@example.com", "Alt", "password1"));
+        String one = "{\"recipeId\":%d,\"ingredientId\":1,\"replacementIngredientId\":2}";
+        String alts = IntStream.rangeClosed(1, Limits.FAVORITE_ALTERNATIVES + 1)
+                .mapToObj(i -> String.format(one, i)).collect(Collectors.joining(","));
+        mvc.perform(put("/api/accounts/" + id + "/favorites/alternatives").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"alternatives\":[" + alts + "]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void favouriteRecipesAreCappedPerAccount() throws Exception {
+        long id = firstId(register("favlimit", "fav@example.com", "Fav", "password1"));
+        tx.executeWithoutResult(s -> {
+            var account = accounts.findById(id).orElseThrow();
+            IntStream.rangeClosed(1, Limits.FAVORITE_RECIPES).forEach(i -> account.getFavoriteRecipeIds().add((long) i));
+            accounts.save(account);
+        });
+
+        // a 1,001st distinct recipe is refused ...
+        mvc.perform(post("/api/accounts/" + id + "/favorites/recipes/" + (Limits.FAVORITE_RECIPES + 1)))
+                .andExpect(status().isBadRequest());
+        // ... re-favouriting one already held is a harmless no-op, and removing frees a slot
+        mvc.perform(post("/api/accounts/" + id + "/favorites/recipes/7")).andExpect(status().isOk());
+        mvc.perform(delete("/api/accounts/" + id + "/favorites/recipes/7")).andExpect(status().isOk());
+        mvc.perform(post("/api/accounts/" + id + "/favorites/recipes/" + (Limits.FAVORITE_RECIPES + 1)))
+                .andExpect(status().isOk());
     }
 
     @Test

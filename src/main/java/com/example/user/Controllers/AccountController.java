@@ -69,7 +69,7 @@ public class AccountController {
     }
 
     @PutMapping("/{id}/restrictions")
-    public AccountResponse replaceRestrictions(@PathVariable long id, @RequestBody RestrictionsRequest request) {
+    public AccountResponse replaceRestrictions(@PathVariable long id, @Valid @RequestBody RestrictionsRequest request) {
         return accountService.replaceRestrictions(id, request.restrictionsOrEmpty());
     }
 
