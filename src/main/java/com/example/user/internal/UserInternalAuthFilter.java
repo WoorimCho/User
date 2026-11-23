@@ -34,9 +34,9 @@ public class UserInternalAuthFilter extends OncePerRequestFilter {
     private final String secret;
 
     public UserInternalAuthFilter(@Value("${internal-auth.enabled:true}") boolean enabled,
-                                  @Value("${internal-auth.secret:dev-internal-secret-change-me}") String secret) {
+                                  @Value("${internal-auth.secret:}") String secret) {
         this.enabled = enabled;
-        this.secret = secret;
+        this.secret = enabled ? InternalAuth.requireSecret(secret) : secret;
     }
 
     @Override

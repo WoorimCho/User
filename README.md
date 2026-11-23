@@ -44,8 +44,8 @@ per-recipe ingredient substitutions).
 ## Run
 
 ```bash
-# once: database passwords live in a git-ignored .env, never in the repo
-cp .env.example .env             # then fill in MYSQL_ROOT_PASSWORD and MYSQL_PASSWORD (openssl rand -hex 24)
+# once: DB passwords + the HMAC secret live in a git-ignored .env, never in the repo
+cp .env.example .env             # fill in MYSQL_ROOT_PASSWORD, MYSQL_PASSWORD, INTERNAL_AUTH_SECRET (openssl rand -hex 24 each)
 
 cd .. && docker compose up --build user    # root stack: reads ../.env
 
@@ -53,7 +53,9 @@ docker compose up -d mysql       # local — schema `user_service`
 ./gradlew bootRun                # Spring Boot's docker-compose support reads .env
 ```
 
-`compose.yaml` refuses to start while a password is unset or empty (finding H4).
+`compose.yaml` refuses to start while a password or the secret is unset or empty
+(findings H4, N1). `bootRun` also reads `INTERNAL_AUTH_SECRET` from `.env` (via
+`spring.config.import`), so one file serves both.
 If a container from before this change still exists, its old password survives
 the new `.env` — `docker compose down -v` first (this wipes that dev database).
 
@@ -64,6 +66,7 @@ the new `.env` — `docker compose down -v` first (this wipes that dev database)
 | `SPRING_DATASOURCE_URL` | `jdbc:mysql://localhost:3309/user_service` |
 | `SPRING_DATASOURCE_USERNAME` | `myuser` |
 | `SPRING_DATASOURCE_PASSWORD` | **none** — set from `MYSQL_PASSWORD` (`.env`); the app fails to connect without it |
+| `INTERNAL_AUTH_SECRET` | **none** — the HMAC secret every service shares (at least 32 characters), from `.env`; the service refuses to start without it (finding N1) |
 | `SERVER_PORT` | `8084` |
 | `ZIPKIN_ENDPOINT` | `http://localhost:9411/api/v2/spans` |
 
@@ -74,7 +77,8 @@ nullable. `ddl-auto=validate`.
 
 ```bash
 ./gradlew test   # Testcontainers MySQL: account flow, auth, restrictions,
-                 # favourites, repository slice, OpenAPI contract, ops
+                 # favourites, repository slice, OpenAPI contract, ops; plus the
+                 # shared-secret check (plain unit tests)
 ```
 
 ## Security ⚠️
@@ -88,9 +92,10 @@ must equal `{id}` → 403 otherwise. Passwords are BCrypt, `currentPassword` is
 verified on change, and `authenticate` runs one BCrypt verify whether or not the
 account exists (finding M2, so timing doesn't reveal usernames).
 
-The shared secret (`INTERNAL_AUTH_SECRET`) still has a **public dev default**
-(finding N1): set a real one, and keep `:8084` bound to `127.0.0.1`.
-See `../IngredientCatalogue/SECURITY.md`.
+The shared secret (`INTERNAL_AUTH_SECRET`) has **no default** (finding N1, fixed
+2026-11-02): the service refuses to start without a random value of at least 32
+characters, from `.env` locally or the environment in a container. Keep `:8084`
+bound to `127.0.0.1`. See `../IngredientCatalogue/SECURITY.md`.
 
 **Limits** (finding N4; `Dto/Limits`): ≤ 100 restrictions of ≤ 100 chars per
 account (the `PUT …/restrictions` body is now actually validated — it wasn't
